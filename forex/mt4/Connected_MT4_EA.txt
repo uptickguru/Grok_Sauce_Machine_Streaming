@@ -1,0 +1,191 @@
+//+------------------------------------------------------------------+
+//| GrokSauceForexEA.mq4                                             |
+//| Low-risk, high-probability EMA/RSI strategy for OANDA MT4        |
+//| Kevin’s Sauce Machine - Feb 24, 2025                             |
+//+------------------------------------------------------------------+
+#property copyright "Grok & Kevin"
+#property link      "http://localhost:5010"
+#property version   "1.00"
+#property strict
+
+input int Inp_FastEMA_Period = 20;    // Fast EMA Period
+input int Inp_SlowEMA_Period = 50;    // Slow EMA Period
+input int Inp_RSI_Period = 14;        // RSI Period
+input double Inp_LotSize = 0.01;      // Lot Size (micro for small acct)
+input int Inp_StopLossPips = 20;      // SL in pips
+input int Inp_TakeProfitPips = 40;    // TP in pips
+input double Inp_MaxDailyLoss = 3.0;  // Max daily loss % (prop buffer)
+input int Inp_StartHourCST = 2;       // Start trading hour (CST, 0-23)
+input int Inp_EndHourCST = 9;         // End trading hour (CST, 0-23)
+input string ServerURL = "http://localhost:5010/forex_settings"; // Settings endpoint
+
+int FastEMA_Period, SlowEMA_Period, RSI_Period;
+double LotSize;
+int StopLossPips, TakeProfitPips;
+double MaxDailyLoss;
+int StartHourCST, EndHourCST;
+
+double fastEMA, slowEMA, rsi, prevFastEMA, prevSlowEMA;
+double dailyLoss = 0.0;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                     |
+//+------------------------------------------------------------------+
+int OnInit() {
+   if(Period() != PERIOD_H1) {
+      Print("EA must run on H1 timeframe! Current: ", Period());
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+   
+   FastEMA_Period = Inp_FastEMA_Period;
+   Print("Set FastEMA_Period: ", FastEMA_Period);
+   SlowEMA_Period = Inp_SlowEMA_Period;
+   Print("Set SlowEMA_Period: ", SlowEMA_Period);
+   RSI_Period = Inp_RSI_Period;
+   Print("Set RSI_Period: ", RSI_Period);
+   LotSize = Inp_LotSize;
+   Print("Set LotSize: ", LotSize);
+   StopLossPips = Inp_StopLossPips;
+   Print("Set StopLossPips: ", StopLossPips);
+   TakeProfitPips = Inp_TakeProfitPips;
+   Print("Set TakeProfitPips: ", TakeProfitPips);
+   MaxDailyLoss = Inp_MaxDailyLoss;
+   Print("Set MaxDailyLoss: ", MaxDailyLoss);
+   StartHourCST = Inp_StartHourCST;
+   Print("Set StartHourCST: ", StartHourCST);
+   EndHourCST = Inp_EndHourCST;
+   Print("Set EndHourCST: ", EndHourCST);
+   
+   Print("Initialized with settings: FastEMA=", FastEMA_Period, ", LotSize=", LotSize, ", StartHourCST=", StartHourCST);
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                               |
+//+------------------------------------------------------------------+
+void OnTick() {
+   if(!IsNewBar(PERIOD_H1)) return;
+   
+   fastEMA = iMA(NULL, PERIOD_H1, FastEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 1);
+   slowEMA = iMA(NULL, PERIOD_H1, SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 1);
+   prevFastEMA = iMA(NULL, PERIOD_H1, FastEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 2);
+   prevSlowEMA = iMA(NULL, PERIOD_H1, SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 2);
+   rsi = iRSI(NULL, PERIOD_H1, RSI_Period, PRICE_CLOSE, 1);
+   
+   dailyLoss = CalculateDailyLoss();
+   if(dailyLoss >= MaxDailyLoss) {
+      Print("Daily loss limit reached: ", dailyLoss, "%");
+      return;
+   }
+   
+   datetime now = TimeCurrent();
+   int cstHour = TimeHour(TimeGMT() - 6 * 3600);
+   if(cstHour < StartHourCST || cstHour >= EndHourCST) {
+      Print("Outside trading window: ", cstHour, " CST");
+      return;
+   }
+   
+   if(IsNewsWindow()) {
+      Print("News window active—no trading!");
+      return;
+   }
+   
+   if(OrdersTotal() == 0) {
+      if(fastEMA > slowEMA && prevFastEMA <= prevSlowEMA && rsi > 50 && rsi < 70) {
+         OpenTrade(OP_BUY);
+      }
+      else if(fastEMA < slowEMA && prevFastEMA >= prevSlowEMA && rsi < 50 && rsi > 30) {
+         OpenTrade(OP_SELL);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Open trade function                                                |
+//+------------------------------------------------------------------+
+void OpenTrade(int type) {
+   double price = (type == OP_BUY) ? Ask : Bid;
+   double sl = (type == OP_BUY) ? price - StopLossPips * Point : price + StopLossPips * Point;
+   double tp = (type == OP_BUY) ? price + TakeProfitPips * Point : price - TakeProfitPips * Point;
+   
+   Print("Attempting trade: ", type == OP_BUY ? "Long" : "Short", " at ", price, ", SL: ", sl, ", TP: ", tp);
+   int ticket = OrderSend(Symbol(), type, LotSize, price, 3, sl, tp, "GrokSauceEA", 0, 0, clrGreen);
+   if(ticket > 0) {
+      Print("Trade opened: ", type == OP_BUY ? "Long" : "Short", ", Ticket: ", ticket, ", Entry: ", price, ", SL: ", sl, ", TP: ", tp);
+      SendTradeToServer(ticket, type, price, sl, tp, "Opened");
+   } else {
+      Print("OrderSend failed: ", GetLastError());
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Send trade to main system (placeholder)                            |
+//+------------------------------------------------------------------+
+void SendTradeToServer(int ticket, int type, double entry, double sl, double tp, string status) {
+   string tradeData = StringFormat("{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"entry\":%.5f,\"sl\":%.5f,\"tp\":%.5f,\"status\":\"%s\",\"time\":\"%s\"}",
+                                   ticket, Symbol(), type == OP_BUY ? "Buy" : "Sell", entry, sl, tp, status, TimeToString(TimeCurrent()));
+   Print("Trade data to send: ", tradeData);
+   // Placeholder: MT4 needs external script/DLL for HTTP POST to http://localhost:5010/forex_trades
+}
+
+//+------------------------------------------------------------------+
+//| Check if new bar on timeframe                                      |
+//+------------------------------------------------------------------+
+bool IsNewBar(int timeframe) {
+   static datetime lastBar = 0;
+   datetime currentBar = iTime(NULL, timeframe, 0);
+   if(currentBar != lastBar) {
+      lastBar = currentBar;
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate daily loss percentage                                    |
+//+------------------------------------------------------------------+
+double CalculateDailyLoss() {
+   double balance = AccountBalance();
+   double equity = AccountEquity();
+   double loss = (balance - equity) / balance * 100.0;
+   return loss > 0 ? loss : 0.0;
+}
+
+//+------------------------------------------------------------------+
+//| Basic news window check (placeholder)                              |
+//+------------------------------------------------------------------+
+bool IsNewsWindow() {
+   datetime now = TimeCurrent();
+   int cstHour = TimeHour(TimeGMT() - 6 * 3600);
+   int cstMin = TimeMinute(now);
+   if(DayOfWeek() == 5 && cstHour == 7 && (cstMin >= 28 && cstMin <= 32)) {
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Fetch settings from server (placeholder—manual sync for now)       |
+//+------------------------------------------------------------------+
+string FetchSettings(string url) {
+   return "{\"FastEMA_Period\":20,\"SlowEMA_Period\":50,\"RSI_Period\":14,\"LotSize\":0.01,\"StopLossPips\":20,\"TakeProfitPips\":40,\"MaxDailyLoss\":3.0,\"StartHourCST\":2,\"EndHourCST\":9}";
+}
+
+//+------------------------------------------------------------------+
+//| Parse JSON settings (update internal vars)                         |
+//+------------------------------------------------------------------+
+void ParseSettings(string json) {
+   if(StringFind(json, "\"FastEMA_Period\":") >= 0) {
+      FastEMA_Period = (int)StringToInteger(StringSubstr(json, StringFind(json, "\"FastEMA_Period\":") + 16, 2));
+      SlowEMA_Period = (int)StringToInteger(StringSubstr(json, StringFind(json, "\"SlowEMA_Period\":") + 16, 2));
+      RSI_Period = (int)StringToInteger(StringSubstr(json, StringFind(json, "\"RSI_Period\":") + 12, 2));
+      LotSize = StringToDouble(StringSubstr(json, StringFind(json, "\"LotSize\":") + 9, 4));
+      StopLossPips = (int)StringToInteger(StringSubstr(json, StringFind(json, "\"StopLossPips\":") + 14, 2));
+      TakeProfitPips = (int)StringToInteger(StringSubstr(json, StringFind(json, "\"TakeProfitPips\":") + 16, 2));
+      MaxDailyLoss = StringToDouble(StringSubstr(json, StringFind(json, "\"MaxDailyLoss\":") + 14, 3));
+      StartHourCST = (int)StringToInteger(StringSubstr(json, StringFind(json, "\"StartHourCST\":") + 14, 2));
+      EndHourCST = (int)StringToInteger(StringSubstr(json, StringFind(json, "\"EndHourCST\":") + 12, 2));
+   }
+}
+
+//+------------------------------------------------------------------+

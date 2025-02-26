@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grok Sauce Machine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 80%;
+            margin: 20px auto;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        #time {
+            text-align: center;
+            margin: 10px;
+        }
+        div {
+            text-align: center;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Grok Sauce Machine Dashboard</h1>
+    <div id="time">
+        <p>EST: {{ data.est_time }}</p>
+        <p>CST: {{ data.cst_time }}</p>
+    </div>
+    <h2>Assets</h2>
+    <table>
+        <tr>
+            <th>Symbol</th>
+            <th>Price</th>
+            <th>Gap (%)</th>
+            <th>Criteria Met</th>
+            <th>Butterfly</th>
+        </tr>
+        {% for symbol, asset in data.assets.items() %}
+        <tr>
+            <td>{{ symbol }}</td>
+            <td>{{ asset.price }}</td>
+            <td>{{ asset.gap }}</td>
+            <td>{{ asset.criteria_met }}</td>
+            <td>
+                {% if asset.butterfly %}
+                    {{ asset.butterfly.lower_strike }} / {{ asset.butterfly.atm_strike }} / {{ asset.butterfly.upper_strike }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    <h2>VIX: {{ data.vix }}</h2>
+    <h2>Gap Criteria: {{ data.gap_criteria }}</h2>
+    <h2>Active Positions</h2>
+    <table>
+        <tr>
+            <th>Symbol</th>
+            <th>Strikes</th>
+            <th>Expiration</th>
+            <th>Action</th>
+        </tr>
+        {% for position in data.active_positions %}
+        <tr>
+            <td>{{ position.symbol }}</td>
+            <td>{{ position.lower_strike }} / {{ position.atm_strike }} / {{ position.upper_strike }}</td>
+            <td>{{ position.expiration }}</td>
+            <td><a href="/close/{{ position.symbol }}">Close</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+    <h2>Breakouts</h2>
+    <table>
+        <tr>
+            <th>Symbol</th>
+            <th>Current Price</th>
+            <th>Long Entry/Target/Stop</th>
+            <th>Short Entry/Target/Stop</th>
+            <th>Probability</th>
+            <th>Best Hour (CST)</th>
+            <th>Status</th>
+        </tr>
+        {% for symbol, breakout in data.breakouts.items() %}
+        <tr>
+            <td>{{ symbol }}</td>
+            <td>{{ data.breakouts[symbol].current_price if breakout else 'N/A' }}</td>
+            <td>
+                {% if breakout %}
+                    {{ breakout.long.entry }} / {{ breakout.long.target }} / {{ breakout.long.stop }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+            <td>
+                {% if breakout %}
+                    {{ breakout.short.entry }} / {{ breakout.short.target }} / {{ breakout.short.stop }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+            <td>{{ breakout.probability if breakout else 'N/A' }}</td>
+            <td>{{ breakout.best_hour_cst if breakout else 'N/A' }}</td>
+            <td>{{ data.breakout_status[symbol] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <h2>Recommendation</h2>
+    <p>{{ data.recommendation }}</p>
+    <div>
+        <a href="/settings">Futures Settings</a> | <a href="/forex_settings">Forex Settings</a> | <a href="/close_all">Close All Trades</a>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+//+------------------------------------------------------------------+
+//| GrokSauceForexEA.mq5                                             |
+//| Low-risk, high-probability EMA/RSI strategy for OANDA small acct  |
+//| Kevin’s Sauce Machine - Feb 24, 2025                             |
+//+------------------------------------------------------------------+
+#property copyright "Grok & Kevin"
+#property link      "http://localhost:5010"
+#property version   "1.00"
+
+input int FastEMA_Period = 20;    // Fast EMA Period
+input int SlowEMA_Period = 50;    // Slow EMA Period
+input int RSI_Period = 14;        // RSI Period
+input double LotSize = 0.01;      // Lot Size (micro for small acct)
+input int StopLossPips = 20;      // SL in pips
+input int TakeProfitPips = 40;    // TP in pips
+input double MaxDailyLoss = 3.0;  // Max daily loss % (prop buffer)
+input string ServerURL = "http://aws-master-grok-sauce/settings"; // Future AWS settings endpoint
+
+double fastEMA[], slowEMA[], rsi[];
+int fastEMAHandle, slowEMAHandle, rsiHandle;
+double dailyLoss = 0.0;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                     |
+//+------------------------------------------------------------------+
+int OnInit() {
+   fastEMAHandle = iMA(_Symbol, PERIOD_H1, FastEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+   slowEMAHandle = iMA(_Symbol, PERIOD_H1, SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+   rsiHandle = iRSI(_Symbol, PERIOD_H1, RSI_Period, PRICE_CLOSE);
+   
+   ArraySetAsSeries(fastEMA, true);
+   ArraySetAsSeries(slowEMA, true);
+   ArraySetAsSeries(rsi, true);
+   
+   // Future: Fetch settings from AWS master server
+   // string settings = FetchSettings(ServerURL);
+   // ParseSettings(settings); // e.g., update LotSize, SL, TP
+   
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                               |
+//+------------------------------------------------------------------+
+void OnTick() {
+   if(!IsNewBar(PERIOD_H1)) return; // Only trade on new H1 bar
+   
+   // Update indicators
+   CopyBuffer(fastEMAHandle, 0, 0, 3, fastEMA);
+   CopyBuffer(slowEMAHandle, 0, 0, 3, slowEMA);
+   CopyBuffer(rsiHandle, 0, 0, 3, rsi);
+   
+   // Check daily loss (prop firm rule)
+   dailyLoss = CalculateDailyLoss();
+   if(dailyLoss >= MaxDailyLoss) {
+      Print("Daily loss limit reached: ", dailyLoss, "%");
+      return;
+   }
+   
+   // News filter (prop firm compliance)
+   if(IsNewsWindow()) {
+      Print("News window active—no trading!");
+      return;
+   }
+   
+   // Trading logic
+   if(PositionsTotal() == 0) { // No open trades
+      if(fastEMA[1] > slowEMA[1] && fastEMA[2] <= slowEMA[2] && rsi[1] > 50 && rsi[1] < 70) {
+         OpenTrade(POSITION_TYPE_BUY);
+      }
+      else if(fastEMA[1] < slowEMA[1] && fastEMA[2] >= slowEMA[2] && rsi[1] < 50 && rsi[1] > 30) {
+         OpenTrade(POSITION_TYPE_SELL);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Open trade function                                                |
+//+------------------------------------------------------------------+
+void OpenTrade(ENUM_POSITION_TYPE type) {
+   double price = (type == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double sl = (type == POSITION_TYPE_BUY) ? price - StopLossPips * Point() : price + StopLossPips * Point();
+   double tp = (type == POSITION_TYPE_BUY) ? price + TakeProfitPips * Point() : price - TakeProfitPips * Point();
+   
+   CTrade trade;
+   if(trade.PositionOpen(_Symbol, type, LotSize, price, sl, tp)) {
+      Print("Trade opened: ", type == POSITION_TYPE_BUY ? "Long" : "Short");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check if new bar on timeframe                                      |
+//+------------------------------------------------------------------+
+bool IsNewBar(ENUM_TIMEFRAMES tf) {
+   static datetime lastBar = 0;
+   datetime currentBar = iTime(_Symbol, tf, 0);
+   if(currentBar != lastBar) {
+      lastBar = currentBar;
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate daily loss percentage                                    |
+//+------------------------------------------------------------------+
+double CalculateDailyLoss() {
+   double balance = AccountBalance();
+   double equity = AccountEquity();
+   double loss = (balance - equity) / balance * 100.0;
+   return loss > 0 ? loss : 0.0; // Only count losses
+}
+
+//+------------------------------------------------------------------+
+//| Basic news window check (placeholder)                              |
+//+------------------------------------------------------------------+
+bool IsNewsWindow() {
+   // Placeholder: Add news API or manual schedule (e.g., NFP at 7:30 CST)
+   // For now, assume 2-min window around 7:30 CST (8:30 EST) on Fridays
+   datetime now = TimeCurrent();
+   MqlDateTime dt;
+   TimeToStruct(now, dt);
+   if(dt.day_of_week == 5 && dt.hour == 7 && (dt.min >= 28 && dt.min <= 32)) {
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Future: Fetch settings from AWS master server                      |
+//+------------------------------------------------------------------+
+string FetchSettings(string url) {
+   // Placeholder: HTTP GET request to AWS server
+   // Use WebRequest() when deployed (MT5 limitation: requires DLL or external script)
+   return "{}"; // Dummy JSON for now
+}
+
+//+------------------------------------------------------------------+

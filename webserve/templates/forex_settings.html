@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Grok Sauce Machine - Forex Settings</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .tooltip { position: relative; display: inline-block; }
+        .tooltip .tooltiptext {
+            visibility: hidden; width: 200px; background-color: #555; color: #fff;
+            text-align: center; padding: 5px; border-radius: 6px; position: absolute;
+            z-index: 1; bottom: 125%; left: 50%; margin-left: -100px;
+        }
+        .tooltip:hover .tooltiptext { visibility: visible; }
+        .button { padding: 5px 10px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Grok Sauce Machine - Forex Settings</h1>
+    <form id="forex-settings-form">
+        <div class="tooltip">
+            <label>Fast EMA Period: <input type="number" name="FastEMA_Period" value="{{ settings.FastEMA_Period }}"></label>
+            <span class="tooltiptext">Fast EMA period for trend detection (10-50).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>Slow EMA Period: <input type="number" name="SlowEMA_Period" value="{{ settings.SlowEMA_Period }}"></label>
+            <span class="tooltiptext">Slow EMA period for trend confirmation (30-100).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>RSI Period: <input type="number" name="RSI_Period" value="{{ settings.RSI_Period }}"></label>
+            <span class="tooltiptext">RSI period for momentum filter (10-20).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>Lot Size: <input type="number" step="0.01" name="LotSize" value="{{ settings.LotSize }}"></label>
+            <span class="tooltiptext">Trade size in lots (0.01-0.1 for small acct).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>Stop Loss (pips): <input type="number" name="StopLossPips" value="{{ settings.StopLossPips }}"></label>
+            <span class="tooltiptext">Stop loss in pips (10-50).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>Take Profit (pips): <input type="number" name="TakeProfitPips" value="{{ settings.TakeProfitPips }}"></label>
+            <span class="tooltiptext">Take profit in pips (20-100).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>Max Daily Loss (%): <input type="number" step="0.1" name="MaxDailyLoss" value="{{ settings.MaxDailyLoss }}"></label>
+            <span class="tooltiptext">Max daily loss % (1-5, prop firm rule).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>Start Hour (CST): <input type="number" min="0" max="23" name="StartHourCST" value="{{ settings.StartHourCST }}"></label>
+            <span class="tooltiptext">Start trading hour in CST (0-23).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>End Hour (CST): <input type="number" min="0" max="23" name="EndHourCST" value="{{ settings.EndHourCST }}"></label>
+            <span class="tooltiptext">End trading hour in CST (0-23).</span>
+        </div><br>
+        <button class="button" type="submit">Save Forex Settings</button>
+    </form>
+    <a href="/">Back to Dashboard</a>
+    
+    <script>
+        document.getElementById("forex-settings-form").onsubmit = function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/forex_settings', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json()).then(data => alert(data.message));
+        };
+    </script>
+</body>
+</html>

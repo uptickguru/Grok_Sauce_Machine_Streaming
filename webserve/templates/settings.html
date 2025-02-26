@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Grok Sauce Machine - Settings</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .tooltip { position: relative; display: inline-block; }
+        .tooltip .tooltiptext {
+            visibility: hidden; width: 200px; background-color: #555; color: #fff;
+            text-align: center; padding: 5px; border-radius: 6px; position: absolute;
+            z-index: 1; bottom: 125%; left: 50%; margin-left: -100px;
+        }
+        .tooltip:hover .tooltiptext { visibility: visible; }
+        .button { padding: 5px 10px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Grok Sauce Machine Settings</h1>
+    <form id="settings-form">
+        <div class="tooltip">
+            <label>Probability Scaler: <input type="number" step="0.1" name="prob_scaler" value="{{ settings.prob_scaler }}"></label>
+            <span class="tooltiptext">Adjusts breakout probability sensitivity. Higher = more aggressive (0.1-0.5).</span>
+        </div><br>
+        <div class="tooltip">
+            <label>Risk/Reward Ratio: <input type="number" step="0.5" name="rr_ratio" value="{{ settings.rr_ratio }}"></label>
+            <span class="tooltiptext">Sets target vs stop distance. E.g., 2.0 = 2:1 RR (1-5).</span>
+        </div><br>
+        <button class="button" type="submit">Save Settings</button>
+    </form>
+    <a href="/">Back to Dashboard</a>
+    
+    <script>
+        document.getElementById("settings-form").onsubmit = function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/settings', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json()).then(data => alert(data.message));
+        };
+    </script>
+</body>
+</html>

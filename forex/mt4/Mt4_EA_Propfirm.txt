@@ -1,0 +1,139 @@
+//+------------------------------------------------------------------+
+//| GrokSauceForexEA.mq4                                             |
+//| Low-risk, high-probability EMA/RSI strategy for OANDA MT4        |
+//| Kevin’s Sauce Machine - Feb 24, 2025                             |
+//+------------------------------------------------------------------+
+#property copyright "Grok & Kevin"
+#property link      "http://localhost:5010"
+#property version   "1.00"
+#property strict
+
+input int FastEMA_Period = 20;    // Fast EMA Period
+input int SlowEMA_Period = 50;    // Slow EMA Period
+input int RSI_Period = 14;        // RSI Period
+input double LotSize = 0.01;      // Lot Size (micro for small acct)
+input int StopLossPips = 20;      // SL in pips
+input int TakeProfitPips = 40;    // TP in pips
+input double MaxDailyLoss = 3.0;  // Max daily loss % (prop buffer)
+input int StartHourCST = 2;       // Start trading hour (CST, 0-23)
+input int EndHourCST = 9;         // End trading hour (CST, 0-23)
+input string ServerURL = "http://aws-master-grok-sauce/settings"; // Future AWS settings
+
+double fastEMA, slowEMA, rsi, prevFastEMA, prevSlowEMA;
+double dailyLoss = 0.0;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                     |
+//+------------------------------------------------------------------+
+int OnInit() {
+   // MT4 doesn’t need explicit handles like MT5—indicators calculated on tick
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                               |
+//+------------------------------------------------------------------+
+void OnTick() {
+   if(!IsNewBar(PERIOD_H1)) return; // Only trade on new H1 bar
+   
+   // Update indicators (current and previous bar)
+   fastEMA = iMA(NULL, PERIOD_H1, FastEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 1);
+   slowEMA = iMA(NULL, PERIOD_H1, SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 1);
+   prevFastEMA = iMA(NULL, PERIOD_H1, FastEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 2);
+   prevSlowEMA = iMA(NULL, PERIOD_H1, SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE, 2);
+   rsi = iRSI(NULL, PERIOD_H1, RSI_Period, PRICE_CLOSE, 1);
+   
+   // Check daily loss (prop firm rule)
+   dailyLoss = CalculateDailyLoss();
+   if(dailyLoss >= MaxDailyLoss) {
+      Print("Daily loss limit reached: ", dailyLoss, "%");
+      return;
+   }
+   
+   // Time window (CST-adjusted)
+   datetime now = TimeCurrent();
+   int cstHour = TimeHour(TimeGMT() - 6 * 3600); // CST = UTC-6 (no DST now)
+   if(cstHour < StartHourCST || cstHour >= EndHourCST) {
+      Print("Outside trading window: ", cstHour, " CST");
+      return;
+   }
+   
+   // News filter (prop firm compliance)
+   if(IsNewsWindow()) {
+      Print("News window active—no trading!");
+      return;
+   }
+   
+   // Trading logic
+   if(OrdersTotal() == 0) { // No open trades
+      if(fastEMA > slowEMA && prevFastEMA <= prevSlowEMA && rsi > 50 && rsi < 70) {
+         OpenTrade(OP_BUY);
+      }
+      else if(fastEMA < slowEMA && prevFastEMA >= prevSlowEMA && rsi < 50 && rsi > 30) {
+         OpenTrade(OP_SELL);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Open trade function                                                |
+//+------------------------------------------------------------------+
+void OpenTrade(int type) {
+   double price = (type == OP_BUY) ? Ask : Bid;
+   double sl = (type == OP_BUY) ? price - StopLossPips * Point : price + StopLossPips * Point;
+   double tp = (type == OP_BUY) ? price + TakeProfitPips * Point : price - TakeProfitPips * Point;
+   
+   int ticket = OrderSend(Symbol(), type, LotSize, price, 3, sl, tp, "GrokSauceEA", 0, 0, clrGreen);
+   if(ticket > 0) {
+      Print("Trade opened: ", type == OP_BUY ? "Long" : "Short");
+   } else {
+      Print("OrderSend failed: ", GetLastError());
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check if new bar on timeframe                                      |
+//+------------------------------------------------------------------+
+bool IsNewBar(int timeframe) {
+   static datetime lastBar = 0;
+   datetime currentBar = iTime(NULL, timeframe, 0);
+   if(currentBar != lastBar) {
+      lastBar = currentBar;
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate daily loss percentage                                    |
+//+------------------------------------------------------------------+
+double CalculateDailyLoss() {
+   double balance = AccountBalance();
+   double equity = AccountEquity();
+   double loss = (balance - equity) / balance * 100.0;
+   return loss > 0 ? loss : 0.0;
+}
+
+//+------------------------------------------------------------------+
+//| Basic news window check (placeholder)                              |
+//+------------------------------------------------------------------+
+bool IsNewsWindow() {
+   datetime now = TimeCurrent();
+   int cstHour = TimeHour(TimeGMT() - 6 * 3600);
+   int cstMin = TimeMinute(now);
+   // Placeholder: NFP at 7:30 CST (Friday)
+   if(DayOfWeek() == 5 && cstHour == 7 && (cstMin >= 28 && cstMin <= 32)) {
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Future: Fetch settings from AWS master server                      |
+//+------------------------------------------------------------------+
+string FetchSettings(string url) {
+   // Placeholder: MT4 WebRequest needs external DLL (not native)
+   return "{}"; // Dummy JSON for now
+}
+
+//+------------------------------------------------------------------+
